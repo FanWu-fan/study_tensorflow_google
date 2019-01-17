@@ -1,3 +1,4 @@
+# Tensorflow
 ## 深度学习的历史
 神经网络的发展可以分为三个阶段：  
 * 早期提出单个神经元结构，简单的线性加权和来模拟这个变换，n个输入值提供给McCull-Pitts 结构，经过加权和一个阈值函数得到0或1的输出。（但是权重学习人手工设置）感知机模型，首个根据样例数据来学习特征权重的模型。
@@ -13,7 +14,7 @@ MXNet | 分布式机器学习社区
 PaddlePaddle | 百度
 Torch | Fackbook
 
-##Tensorflow环境搭建
+## Tensorflow环境搭建
 Tensorflow依赖的两个最主要的工具包：**Prorocol Buffer**和**Bazel**.
 
 ### Protocol Buffer
@@ -98,3 +99,7 @@ BUILD文件由一系列编译目标组成的，**定义编译目标的先后顺�
 * **name**: 编译目标的名字，这个名字用来指代这一条编译目标。
 * **src**: 给出编译所需要的源代码，这一项可以是一个列表。
 * **deps**: 给出了编译所需要的依赖关系，比如hello_main.py 需要调用hello_lib.py中的函数，所以hello_main的编译目标将hello_lib作为依赖关系。在这个项目空间中运行编译操作 bazel build:hello_main
+
+## Tensorflow计算模型--计算图
+Tensorflow的名字当中已经说明了它最重要的两个概念--Tensor和Flow。Tensor就是张量，可以理解为多维数组，体现了数据结构，那么Flow体现了计算模型，Tensorflow是通过计算图的形式来表述计算的编程系统。每一个计算都是计算图上的节点，而节点的边描述了计算之间的依赖关系。
+Tensorflow程序一般可以分为两个阶段，第一个定义计算图中的所有计算，其中为了建模的方便，TF会将常量转化成一种永远输出固定值的运算。
