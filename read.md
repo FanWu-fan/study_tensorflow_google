@@ -103,3 +103,17 @@ BUILD文件由一系列编译目标组成的，**定义编译目标的先后顺�
 ## Tensorflow计算模型--计算图
 Tensorflow的名字当中已经说明了它最重要的两个概念--Tensor和Flow。Tensor就是张量，可以理解为多维数组，体现了数据结构，那么Flow体现了计算模型，Tensorflow是通过计算图的形式来表述计算的编程系统。每一个计算都是计算图上的节点，而节点的边描述了计算之间的依赖关系。
 Tensorflow程序一般可以分为两个阶段，第一个定义计算图中的所有计算，其中为了建模的方便，TF会将常量转化成一种永远输出固定值的运算。
+```python
+import tensorflow as tf 
+a = tf.constant([1.0, 2.0], name = "a")
+b = tf.constant([2.0, 3.0], name = "b")
+result = a + b
+```
+系统会自动维护一个默认的计算图，通过tf.get_default_graph()函数可以获取当前默认的计算图，以下代码示意了如何获取默认计算图以及如何查看一个运算所属的计算图。
+```python
+print(test.a.graph is tf.get_default_graph())
+True
+```
+除了使用默认的计算图，TF支持通过tf.Graph函数来生成新的计算图，不同计算图上的张量和运算都不会共享。以下代码示意了如何在不同计算图上定义和使用变量。
+```python
+```
