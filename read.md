@@ -16,7 +16,7 @@ Torch | Fackbook
 ##Tensorflow环境搭建
 Tensorflow依赖的两个最主要的工具包：**Prorocol Buffer**和**Bazel**.
 
-### Protocol
+### Protocol Buffer
 **Protocol Buffer** 是谷歌开发的处理结构化数据的工具。
 ```
 name:张三
@@ -42,3 +42,59 @@ email: zhangsan@ad.com
     "email": "zhangsan@ad.com",
 }
 ```
+ * **Protocol Buffer**序列化后的数据不可读，是二进制流，不同于 **XML** 和 **JSON** 
+ *  **XML** 和 **JSON**的数据信息都包含在序列化之后的数据中，不需要任何其他信息就能换源序列化之后的数据，但是使用 **Protocol Buffer**时需要先定义数据的格式。还原一个序列化之后的数据将需要使用到这个定义好的数据格式。所以要比  **XML** 和 **JSON**快 20 到 100倍，数据小 3到10倍。
+```
+message user{
+    optional string name = 1; //可选的
+    required int32 id = 2;      //必须的
+    repeated string emial = 3;  //可重复的，可以使用列表
+}
+```
+**Protocol Buffer** 定义的数据格式文件一般保存在.proto文件中。每个message代表了一类结构化的数据，比如这里的用户信息，message里面定义了每一个属性的类型和名字。Protocol Buffer里属性的类型可以时像布尔型、整数型、实数型、字符型这样的基本类型，也可以是另外一个message。
+在message中，定义一个属性是 必须的(**required**)[*所有的实例都需要有这个属性*], 可选的(**optional**)[*属性的取值可以为空*],可重复的(**repeated**)[*属性的取值可以是一个列表*],
+分布式 **Tensorflow** 的通信协议 gRPC 也是以 Protocol Buffer作为基础。
+
+### Bazel
+
+Bazel是谷歌开源的自动化构建工具，相比于传统的 Makefile,Ant或者Maven,Bazel在速度、可伸缩性、灵活性更加出色。项目空间(workspace)，这个文件夹包括了编译一个软件的所需要的源代码以及输出编译结果的软连接(symbolic link)地址。根目录需要一个WORKSPACE文件，此文件定义了对外部资源的依赖关系。
+在一个项目空间内，Bazel通过BUILD文件来寻找需要编译的目标，BUILD文件采用类似python的语法来指定每一个编译目标的输入、输出以及编译方式。与Makefile这种开放式的编译工具不同，Bazel的编译方式是事先定义好的，BAzel对python支持的编译方式有：py_binary,py_libary和 py_test。
+* **py_binary** 将python程序编译为可执行文件
+* **py_test** 编译python测试程序
+* **py_libary** 将python程序编译成库函数供其他的py_binary或py_test调用。
+
+如下所示，在样例空间中有4个文件：
+WORKSPACE, BUILD, hello_main.py 和 hello_lib.py
+WORKSPACE给出此项目的外部依赖关系，为了简单起见，这里使用一个空文件，表明这个项目没有对外部的依赖。hello_lib.py完成打印“hello world”的简单功能，它的代码如下：
+```python
+def print_hello_world():
+    print("Hello World")
+```
+hello_main.py通过调用hello_lib.py中定义的函数来完成输出，它的代码如下：
+```python
+import hello_lib
+hello_lib.print_hello_world()
+```
+在BUILD文件中定义了两个编译目标：
+```
+py_library(
+    name = "hello_lib",
+    srcs = [
+        "hello_lib.py",
+    ]
+)
+
+py_binary(
+    name = "hello_main",
+    srcs = [
+        "hello_main.py",
+    ],
+    deps = [
+        ":hello_lib",
+    ],
+)
+```
+BUILD文件由一系列编译目标组成的，**定义编译目标的先后顺序不会影响编译的结果**，在每一个编译目标的第一行指定编译的方式(py_library,py_binary)。在每一个编译目标中的主体需要给出编译的具体信息，编译的具体信息是通过定义 name, srcs, deps 等属性完成的。
+* **name**: 编译目标的名字，这个名字用来指代这一条编译目标。
+* **src**: 给出编译所需要的源代码，这一项可以是一个列表。
+* **deps**: 给出了编译所需要的依赖关系，比如hello_main.py 需要调用hello_lib.py中的函数，所以hello_main的编译目标将hello_lib作为依赖关系。在这个项目空间中运行编译操作 bazel build:hello_main
