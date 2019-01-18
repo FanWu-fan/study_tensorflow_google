@@ -19,7 +19,8 @@ with tf.Session(graph = g1) as sess:
     tf.global_variables_initializer().run()
     #这里的initialize是动词，执行初始化所有变量的操作
     with tf.variable_scope("",reuse = True): #定义变量
-        print(sess.run(tf.get_variable("v")))
+        with g1.device('/gpu:0'):
+            print(sess.run(tf.get_variable("v")))
 
 with tf.Session(graph = g2) as sess:
     tf.global_variables_initializer().run()
