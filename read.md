@@ -114,6 +114,53 @@ result = a + b
 print(test.a.graph is tf.get_default_graph())
 True
 ```
-除了使用默认的计算图，TF支持通过tf.Graph函数来生成新的计算图，不同计算图上的张量和运算都不会共享。以下代码示意了如何在不同计算图上定义和使用变量。
+除了使用默认的计算图，TF支持通过**tf.Graph**函数来**生成新的计算图**，不同计算图上的张量和运算都不会共享。以下代码示意了如何在不同计算图上定义和使用变量。
 ```python
+import tensorflow as tf
+"""
+定义位置： tensorflow/python/ops/variable_scope.py
+此上下文管理器验证(可选)指来之同一个计算图，确保计算图是默认计算图，并且推送名称范围和变量范围。
+
+如果name_orscope不是None，它按照原样使用，如果name_or _scope是None,则使用default_name,
+在这种情况下，如果先前在同一范围内同一名字已经被使用，它将会被附加_N成为唯一的名字
+
+variable_scope允许你创造一个新的变量并共享已经创建的变量，同时提供不会意外的创建或者共享的检查，
+"""
+import tensorflow as tf
+
+g1 = tf.Graph()
+with g1.as_default():
+    #在计算图g1中定义变量“V”，并设置初始值为0
+    v = tf.get_variable(
+        name="v", shape=[1],initializer = tf.zeros_initializer
+    )
+    #这里的initializer是名词，代表的是设置属性、状态
+g2 = tf.Graph()
+with g2.as_default():
+    #在计算图g2中定义变量"v",并且设置初始值为1
+    v = tf.get_variable(
+        "v",shape=[1], initializer=tf.ones_initializer
+    )
+
+#在计算图g1中读取变量"v"的取值。
+with tf.Session(graph = g1) as sess:
+    tf.global_variables_initializer().run()
+    #这里的initialize是动词，执行初始化所有变量的操作
+    with tf.variable_scope("",reuse = True): #定义变量
+        print(sess.run(tf.get_variable("v")))
+
+with tf.Session(graph = g2) as sess:
+    tf.global_variables_initializer().run()
+    #这里的initialize是动词，执行初始化所有变量的操作
+    with tf.variable_scope("",reuse = True):
+        print(sess.run(tf.get_variable("v")))
 ```
+上面的代码产生了两个计算图，每个计算图中定义了一个名字为"v"的变量，在计算图g1中，v初始化为0；g2中，v初始化为1.
+TF中计算图不仅仅可以用来隔离张量和计算，还提供管理张量和计算的机制。计算图可以通过tf.Grapg.device函数来指定运行的设别。
+```python
+g = tf.Graph()
+with g.device('/gpu:0'):
+    result = a +b
+```
+
+

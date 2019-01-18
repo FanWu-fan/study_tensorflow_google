@@ -26,3 +26,4 @@ with tf.Session(graph = g2) as sess:
     #这里的initialize是动词，执行初始化所有变量的操作
     with tf.variable_scope("",reuse = True):
         print(sess.run(tf.get_variable("v")))
+
