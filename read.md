@@ -162,5 +162,12 @@ g = tf.Graph()
 with g.device('/gpu:0'):
     result = a +b
 ```
-
+在一个计算图中，可以通过集合(collection)来管理不同类别的资源，比如通过tf.add_to_collection函数可以将资源加入一个或多个集合中，然后通过tf.get_collection获取一个集合里面的所有资源，这里的资源可以是张量，变量或者运行TF程度所需要的队列资源。同时TF也自动管理了一些最常用的集合。
+集合名称 | 集合内容 | 使用场景
+:--: | :--: | :--:|
+tf.GraphKeys.VARIABLES|所有变量 |持久化TF模型
+tf.GraphKeys.TRAINABLE_VARIABLES | 可学习的变量(神经网络的参数)|模型训练、生成模型可视化内容
+tf.GraphKeys.SUMMARIES | 日志生成相关的张量 |TF的计算可视化
+tf.GraphKeys.QUEUE_RUNNERS | 处理输入的QueueRunner | 输入处理
+tf.GraphKeys.MOVING_AVERAGE_VARIABLES | 所有计算了滑动平均值的变量 | 计算了变量的华东平均值
 
