@@ -1,3 +1,4 @@
+# Chapter1 计算图介绍
 # Tensorflow
 ## 深度学习的历史
 神经网络的发展可以分为三个阶段：  
@@ -170,4 +171,5 @@ tf.GraphKeys.TRAINABLE_VARIABLES | 可学习的变量(神经网络的参数)|模
 tf.GraphKeys.SUMMARIES | 日志生成相关的张量 |TF的计算可视化
 tf.GraphKeys.QUEUE_RUNNERS | 处理输入的QueueRunner | 输入处理
 tf.GraphKeys.MOVING_AVERAGE_VARIABLES | 所有计算了滑动平均值的变量 | 计算了变量的华东平均值
+
 
