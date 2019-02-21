@@ -9,6 +9,7 @@ def A():
     #result = a + b
     result = tf.add(a, b, name = "add")
     print(result)
+A()
 #输出：Tensor("add:0", shape=(2,), dtype=float32)
 #result这个张量是计算节点“add"输出的第一个结果
 #是一个一维数组，数组的长度为2
@@ -18,13 +19,13 @@ def A():
 
 ## 3.3 张量的使用
 第一类用途是对中间计算结果的引用，当一个计算包含很多中间结果的时候，使用张量可以提高可读性，比如上面的代码利用a和b保存，来结算和result。同时通过张量来存储中间结果，这样可以方便的获取中间结果。比如在卷积神经网络中，卷积层或者池化层可能改变张量的维度，通过 *result.get_shape* 函数来获取张量的维度信息可以避免人工计算的麻烦。
-第二类用途是当计算图构造完成之后，张量可以用来获得计算结果，即真实的数字。虽然张量本身没有存储具体的数字，但是通过 *session* 就可以得到这些具体的数字。比如在上述代码中，可以使用 *tf.Session().run(result)*来得到计算结果。
+第二类用途是当计算图构造完成之后，张量可以用来获得计算结果，即真实的数字。虽然张量本身没有存储具体的数字，但是通过 *session* 就可以得到这些具体的数字。比如在上述代码中，可以使用 *tf.Session().run(result)* 来得到计算结果。
 
 ## 3.4 会话
 本节说明如何使用TF中的会话(session)来执行定义好的运算。会话拥有并管理TF程序运行时的所有资源。当所有计算完成之后需要关闭会话来帮助系统回收资源，否则会出现资源泄露的问题。TF中使用会话的模式一般有两种，第一种模式需要明确的调用会话生成函数和关闭会话函数：
 ```python
 #创建一个会话
-sess = tf.session()
+sess = tf.Session()
 #使用这个创建好的会话来得到关心的运算的结果，比如sess.run(result).
 sess.run(print(sess.run(result)))
 sess.close()
@@ -38,7 +39,7 @@ with tf.Session() as sess:
 # 当上下文退出时会话关闭和资源释放也就自动完成了
 ```
 通过python上下文管理器的机制，只要将所有的计算放在"with"的内部就可以，当上下文管理器退出时会自动释放所有资源。这样即解决了因为异常退出时资源释放的问题，同时也解决了忘记调用*Session.close*函数而产生的志愿泄露。
-TF会自动产生一个默认的计算图，如果没有特殊指定，运算会制动加入这个计图，TF的会话也有类似的机制，到那时TF不会自动生成默认的会话，而是需要手动指定，当默认的会话被指定之后可以通过**tf.Tensor.eval**函数来计算一个张量的取值，
+TF会自动产生一个默认的计算图，如果没有特殊指定，运算会自动加入这个计图，TF的会话也有类似的机制，到那时TF不会自动生成默认的会话，而是需要手动指定，当默认的会话被指定之后可以通过**tf.Tensor.eval**函数来计算一个张量的取值，
 ```python
 sess = tf.Session()
 with sess.as_default():
@@ -82,6 +83,16 @@ http://playground.tensorflow.org
 
 ### 3.4.2 前向传播算法
 全连接层：相邻两层之间任意两个节点之间都有连接。W来表示神经元的参数，W的上标表明了神经网络的层数，比如 $W^{(1)}$表示第一层节点的参数。W的下标表明了连接节点编号，比如 $W_{1,2}^{(1)}$ 表示连接 $x_1$ 和 $a_12$ 节点边上的权重。
+![](picture/2019-02-21-14-17-59.png)
+前向传播过程
+![](picture/2019-02-21-14-19-28.png)
+$W^{(1)}$组织成一个2*3的矩阵：
+![](picture/2019-02-21-14-21-37.png)
+这样通过矩阵乘法得到隐藏层三个节点所组成的向量取值：
+![](picture/2019-02-21-14-23-20.png)
+类似的输出层可以表示为：
+![](picture/2019-02-21-14-24-11.png)
+
 在TF中，变量 **tf.Variable** 的作用就是保存和更新神经网络中的参数，参数也需要指定初始值，一般使用随机数给TF中的变量初始化。下面的代码给出了TF中声明一个 2*3 的矩阵变量的方法：
 >weights = tf.Variable(tf.random_normal([2, 3], stddev = 2))
 
@@ -134,5 +145,91 @@ with tf.Session() as sess:
     print(sess.run(y))
 ```
 TF的w1是一个 *Variable* 运算。w1通过一个 *read* 操作将值供给了一个乘法运算，这个乘法操作就是 *tf.matmul(x,w1)*.初始化变量 *w1* 是通过 *Assign* 操作完的，*Assign* 这个节点的输入为 *随机生成函数* 的输出，而输出赋给了变量 *w1*.
+![](picture/2019-02-21-14-38-42.png)
 TF中的 集合(*collection*)的概念，所有的变量都会被自动的加入 *GraphKeys.VARIABLES* 这个集合中，通过 *tf.all_variables* 函数可以拿到当前计算图上所有的变量，拿到计算图上所有的变量有助于持久化整个计算图的运行状态。在构建模型的时候，可以用过变量声明函数中的 *trainable* 参数来区分需要优化的参数(神经网络中的参数)和其他参数(比如迭代的轮数)。如果声明的变量参数 *trainable* 为 真，那么这个变量将会被加入到 *GraphKeys.TRAINABLE_VARIABLES*集合。可以用过 *tf.trainable_variables*得到所有需要优化的参数。TF中提供的神经网络优化算法默认会将 *GraphKeys.TRAINABLE_VARIABLES*集合中的对象作为默认的优化对象。
+集合名称 | 集合内容 | 使用场景
+:--: | :--: | :--:|
+tf.GraphKeys.VARIABLES|所有变量 |持久化TF模型
+tf.GraphKeys.TRAINABLE_VARIABLES | 可学习的变量(神经网络的参数)|模型训练、生成模型可视化内容
+tf.GraphKeys.SUMMARIES | 日志生成相关的张量 |TF的计算可视化
+tf.GraphKeys.QUEUE_RUNNERS | 处理输入的QueueRunner | 输入处理
+tf.GraphKeys.MOVING_AVERAGE_VARIABLES | 所有计算了滑动平均值的变量 | 计算了变量的滑动平均值
+ 类似张量，维度(shape)和类型(type)也是变量重要的两个属性，变量的 **类型** 是 **不可以改变的**。一个变量在构建之后，它的类型就不能再改变了，比如在上面给出的前向传播样例中，w1的类型为random_normal结果的 **默认类型** tf.float32,不能被赋予其他类型的值，以下代码将会报出类型不匹配的错误。
+ ```python
+ w1 = tf.Variable(tf.random_normal([2,3], stddev=1), name = 'w1')
+w2 = tf.Variable(tf.random_normal([2,3], stddev=2,dtype= tf.float64),
+                name = 'w2')
+w1.assign(w2)
+with tf.Session() as sess:
+    tf.global_variables_initializer().run()
+    print('w2: ', sess.run(w2))
+    print('w1: ', w1.eval())
+ #Input 'value' of 'Assign' Op has type float64 that does 
+ # not match type float32 of argument 'ref'
+ ```
 
+ 维度是变量的另外一个重要的属性。和类型不同，维度在程序中是有可能改变的，但是需要通过设置参数 *validate_shape = Flase* .如下：
+
+```python
+w1 = tf.Variable(tf.random_normal([2, 3], stddev=1),
+            name = 'w1')
+w2 = tf.Variable(tf.random_normal([2, 2], stddev= 1),
+            name = 'w2')
+#下面这句话会报维度不匹配的错误：
+#ValueError：
+#tf.assign(w1,w2)
+#下面这句话可以执行成功
+tf.assign(w1, w2, validate_shape=False)
+```
+### 3.4.3 通过Tensorflow训练神经网络模型
+在上面，完成了神经网络的前向传播过程，在这个示例中，所有的变量取值都是随机的，在使用神经网络解决实际的分类或者回归问题时，需要更好的设置参数取值。设置神经网络参数的过程就是神经网络的训练过程。下图是训练之前之后的效果图。
+![](picture/2019-02-21-19-29-26.png)
+在神经网络优化算法中，最常用的是反向传播算法(backpropagation).
+![](picture/2019-02-21-19-35-59.png)
+反向传播算法实现了一个迭代的过程，每次迭代的开始，首先选取一小部分训练数据，这个一小部分训练数据叫做一个 **batch**.这个 **batch** 的样例通过前向传播算法得到神经网络模型的预测结果。因为训练数据都有正确答案标注的，可以计算当前预测答案和正确答案之间的差距，最后，基于这个差距，反向传播算法会相应更新神经网络参数的取值，使得这个 **batch** 上的预测结果和真实答案更加接近。
+通过Tensorflow实现反向传播算法的第一步是使用Tensorflow表达一个batch的数据，
+> x= tf.constant([0.7, 0.9])
+
+但如果每轮迭代选取的数据通过常量表示，那么TF的计算图将会非常大，因为每有一个常量，TF都会在计算图中增加一个节点，为了解决这个问题，TF提供 **placeholder**机制用于提供输入数据， **placeholder** 相当于定义了一个位置，这个位置中的数据在程序运行时再指定，这样在程序中就不需要生成大量常量来提供输入数据，只需要将数据通过 **placeholder** 传入TF计算图中，在 **placeholder** 定义时，数据类型需要指定且不可以改变，维度信息可以根据提供的数据推导得出，所以并不一定要给出。下面通过 **placeholder** 实现前向传播算法:
+```python
+w1 = tf.Variable(tf.random_normal([2, 3], stddev =1))
+w2 = tf.Variable(tf.random_normal([3, 1],stddev = 1))
+
+#定义 placeholder 作为存放数据的地方，这里维度不一定要定义
+# 但是如果维度是确定的，那么给出维度可以降低出错的概率
+x = tf.placeholder(tf.float32, shape=(1,2), name = "input")
+a = tf.matmul(x, w1)
+y = tf.matmul(a, w2)
+
+with tf.Session() as sess:
+    tf.global_variables_initializer().run()
+    #print(sess.run(y)) #这个会报错InvalidArgumentError (see above for traceback): 
+    #You must feed a value for placeholder tensor 'input' with dtype float and shape [1,2]
+
+    print(sess.run(y,feed_dict={x:[[0.7,0.9]]}))
+``` 
+这段程序中代替了原来通过常量定义的输入的x,需要一个 *feed_dict* 来指定 x的取值， *feed_dict* 是字典。
+在训练神经网络时需要每次提供一个batch的训练样例，将输入的1\*2矩阵改为 n\*2 矩阵，那么就可以得到n个样例的前向传播结果了，n\*2矩阵的每一行为一个样例数据，这样前向传播的结果为 n\*1的矩阵，每一行代表一个样例的前向传播结果。
+```python
+w1 = tf.Variable(tf.random_normal([2, 3], stddev =1))
+w2 = tf.Variable(tf.random_normal([3, 1],stddev = 1))
+x = tf.placeholder(tf.float32)
+a = tf.matmul(x, w1)
+y = tf.matmul(a, w2)
+with tf.Session() as sess:
+    tf.global_variables_initializer().run()
+    #print(sess.run(y)) #这个会报错InvalidArgumentError (see above for traceback): 
+    #You must feed a value for placeholder tensor 'input' with dtype float and shape [1,2]
+
+    print(sess.run(y,feed_dict={x:[[0.7,0.9],[0.1,0.4],[0.5,0.8]]}))
+```
+在得到一个batch的前向传播结果之后，需要定义一个损失函数来刻画当前预测值和真实答案之间的差距，以下代码定义了一个简单的损失函数，并通过Tensotflow定义了反向传播的算法。
+```pyhton
+cross_entropy = -tf.reduce_mean(
+    y_* tf.log(tf.clip_by_value(y,1e-10,1.0))
+)
+learning_rate = 0.001
+train_step = \
+    tf.train.AdamOptimizer(learning_rate).minimize(cross_entropy)
+```
+*cross_entropy* 定义了真实值和预测值之间的交叉熵，这是分类问题中一个常用的损失函数，第二行 *train_step* 定义了 反向传播的优化方法。目前TF支持7种不同的优化器，常用的三种为： tf.train.*GradientDescentOptimizer*, tf.train.*AdamOptimizer*, tf.train.*MomentumOPtimizer*. 在定义反向传播算法之后，运行 sess.run(train_step)可以对所有的 GraphKeys.TRAINABLE_VARIABLES集合中的变量进行优化，使得当前 batch下的损失函数更小。
