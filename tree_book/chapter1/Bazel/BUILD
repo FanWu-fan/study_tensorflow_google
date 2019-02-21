@@ -1,4 +1,4 @@
-py_library(
+py_libary(
     name = "hello_lib",
     srcs = [
         "hello_lib.py",
@@ -8,9 +8,9 @@ py_library(
 py_binary(
     name = "hello_main",
     srcs = [
-        "hello_main.py",
+        hello_main.py",
     ],
     deps = [
         ":hello_lib",
-    ],
+    ]
 )

@@ -112,7 +112,7 @@ result = a + b
 ```
 系统会自动维护一个默认的计算图，通过tf.get_default_graph()函数可以获取当前默认的计算图，以下代码示意了如何获取默认计算图以及如何查看一个运算所属的计算图。
 ```python
-print(test.a.graph is tf.get_default_graph())
+print(a.graph is tf.get_default_graph())
 True
 ```
 除了使用默认的计算图，TF支持通过**tf.Graph**函数来**生成新的计算图**，不同计算图上的张量和运算都不会共享。以下代码示意了如何在不同计算图上定义和使用变量。
@@ -170,6 +170,6 @@ tf.GraphKeys.VARIABLES|所有变量 |持久化TF模型
 tf.GraphKeys.TRAINABLE_VARIABLES | 可学习的变量(神经网络的参数)|模型训练、生成模型可视化内容
 tf.GraphKeys.SUMMARIES | 日志生成相关的张量 |TF的计算可视化
 tf.GraphKeys.QUEUE_RUNNERS | 处理输入的QueueRunner | 输入处理
-tf.GraphKeys.MOVING_AVERAGE_VARIABLES | 所有计算了滑动平均值的变量 | 计算了变量的华东平均值
+tf.GraphKeys.MOVING_AVERAGE_VARIABLES | 所有计算了滑动平均值的变量 | 计算了变量的滑动平均值
 
 
