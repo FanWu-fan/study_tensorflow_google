@@ -28,7 +28,7 @@ y_ = tf.placeholder(
 a = tf.matmul(x,w1)
 y = tf.matmul(a,w2)
 
-#定义损失函数和反向传播的算法 交叉熵
+#定义损失函数和反向传播的算法 交叉熵，二分类问题可以不用softmax
 cross_entropy = -tf.reduce_mean(y_ * tf.log(
     tf.clip_by_value(y, 1e-10, 1.0)))
 train_step = \
