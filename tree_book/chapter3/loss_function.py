@@ -36,6 +36,8 @@ X = rdm.rand(data_size, 2)#生成 128行2列的数据
 #不大，因为不同的损失函数都会在能完全预测正确的时候最低。一般
 #来说噪音为一个均值为0的小量，所以这里的噪音设置为
 #-0.05~0.05的随机数
+
+#注意这里是生成二维列表
 Y= [[x1 + x2 + rdm.rand() / 10.0-0.05] for (x1,x2) in X]
 
 #训练神经网络
@@ -52,3 +54,5 @@ with tf.Session() as sess:
             train_step,feed_dict={x:X[start:end],y_:Y[start:end]}
         )
     print(sess.run(w1))
+
+

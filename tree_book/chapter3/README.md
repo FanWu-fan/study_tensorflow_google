@@ -154,5 +154,126 @@ sess.close()
 ```
 在定义了 **损失函数** 之后，下面将通过一个简单的神经网络来讲解损失函数对模型训练结果的影响。在下面的程序中，实现了一个拥有两个输入节点，一个输出节点，没有隐藏层的神经网络。
 ```python
+import tensorflow as tf 
+from numpy.random import RandomState
+#这里通过Numpy工具包生成模拟数据集
 
+batch_szie = 8
+
+#两个输入节点
+x = tf.placeholder(
+    tf.float32, shape = (None,2), name = 'x-input')
+y_ = tf.placeholder(
+    tf.float32, shape=(None,1),name = 'y-input'
+)
+
+#定义了一个单层的神经网络前向传播的过程，就是简单的加权和。
+#shape: 输出张量的形状，必选 mean: 正态分布的均值，默认为0
+#stddev: 正态分布的标准差，默认为1.0 
+#seed: 随机数种子，是一个整数，当设置之后，每次生成的随机数都一样
+#dtype: 输出的类型，默认为tf.float32
+w1 = tf.Variable(tf.random_normal([2,1],stddev=1,seed=1))
+y = tf.matmul(x,w1)
+
+#定义预测多了和少了的成本。
+loss_less = 10
+loss_more = 1
+loss = tf.reduce_sum(
+    tf.where(tf.greater(
+        y,y_),(y-y_)*loss_more,(y_-y)* loss_less))
+train_step = tf.train.AdamOptimizer(0.001).minimize(loss)
+
+#通过随机数生成一个模拟数据集
+rdm  = RandomState(1)#产生一个随机状态种子
+data_size = 128
+X = rdm.rand(data_size, 2)#生成 128行2列的数据
+#设置回归的正确值为两个输入的和加上一个随机量，之所以要加上
+#一个随机量是为了加入不可预测的噪音，否者不同的损失函数的意义就
+#不大，因为不同的损失函数都会在能完全预测正确的时候最低。一般
+#来说噪音为一个均值为0的小量，所以这里的噪音设置为
+#-0.05~0.05的随机数
+
+#注意这里是生成二维列表
+Y= [[x1 + x2 + rdm.rand() / 10.0-0.05] for (x1,x2) in X]
+
+#训练神经网络
+with tf.Session() as sess:
+    init_op = tf.global_variables_initializer()
+    init_op.run()
+    
+    STEPS = 5000
+    for i in range(STEPS):
+        start = (i*batch_szie) % data_size
+        end = min(start+batch_szie,data_size)
+        
+        sess.run(
+            train_step,feed_dict={x:X[start:end],y_:Y[start:end]}
+        )
+    print(sess.run(w1))
+
+```
+## 神经网络优化算法
+
+本节将具体地介绍如何通过 **反向传播算法** (backpropagation)和 **梯度下降算法** (gradient decent)调整神经网络中参数的取值。梯度下降算法主要用于优化 **单个参数** 的取值，而反向传播算法给出了一个高效的方式在 **所有参数上**使用 梯度下降算法，从而使神经网络模型在 **训练数据** 上的 **损失函数**尽可能小。反向传播算法是训练神经网络的核心算法，它可以根据定义好的损失函数优化神经网络中 **参数** 的取值，从而使神经网络模型在训练数据集上的损失函数达到一个较小值。神经网络模型中参数的优化过程直接决定了模型的质量，是使用神经网络时非常重要的一步。在本节中，将主要介绍神经网络优化过程的基本概念和主要思想。
+
+
+如下，使用**梯度下降算法**优化参数取值的过程，假设用$\theta$表示神经网络中的 **参数**，$J(\theta)$表示在给定的参数取值下，训练数据集上 **损失函数** 的大小，那么整个优化过程可以抽象为寻找一个参数 $\theta$,使得$J(\theta)$最小。因为目前没有一个通用的方法可以对任意损失函数直接求解最佳的参数取值，所以在实践中，**梯度下降**是最常用的神经网络优化方法。梯度下降算法会：迭代式更新参数$\theta$,不断沿着梯度的反方向让参数朝着总损失更小的方向更新。
+![](picture/2019-03-02-14-00-08.png)
+x轴表示参数$\theta$的取值，y轴表示损失函数$J(\theta)$的值，图中表示了在参数$\theta$取不同值时，对应损失函数$J(\theta)$的大小。参数的梯度可以通过求偏导的方式计算，对于参数$\theta$，其梯度为$\frac{\partial}{\partial\theta}J(\theta)$.有了梯度，还需要定义一个学习率$\eta$(learning rate)来定义每次参数更新的幅度。从直观上理解，可以认为学习率定义的就是 **每次参数移动的幅度**。通过参数的梯度和学习率，参数更新公式为：
+$$ \theta_{n+1} = \theta_n - \eta \frac{\partial}{\partial\theta_n}J(\theta_n) $$
+下面给出一个具体的例子来说明梯度下降算法是如何工作的，假设要通过梯度下降算法来优化参数x，使得**损失函数**$J(x) = x^2$的值尽量小。梯度下降算法的第一步需要随机产生一个参数x的初始值，然后通过梯度和学习率来更新参数x的取值，参数x的梯度为：$\bigtriangledown = \frac{\partial J(x)}{\partial x} = 2x$,那么使用梯度下降算法每次对参数x的更新公式为 $x_{n+1} = x_n  -\eta \bigtriangledown n $.假设参数的初始值为5，学习率为0.3，那么这个优化过程：
+![](picture/2019-03-02-15-12-07.png)
+神经网络的优化过程可以分为两个阶段，第一个阶段先通过**前向传播算法**计算得到**预测值**，并且将预测值和真实值做对比得到两者之间的差距。然后在第二个阶段通过**反向传播算法**计算**损失函数**对**每一个参数**的梯度，再根据梯度和学习率使用 **梯度下降算法** 更新每一个参数。
+除了不一定能达到全局最优外、梯度下降算法的另外一个问题就是计算时间过长。因为要在全部训练数据上最小化损失，所以损失函数$J(\theta)$是在 **所有训练数据上的损失和**。这样在每一轮迭代中都需要计算在全部数据上的损失函数。为了加速训练过程，可以使用随机梯度下降的算法(stochastic gradient descent).这个算法优化的不是在全部训练数据上的损失函数，而是在每一轮迭代中，**随机优化**某一条训练数据上的损失函数。这样每一轮参数更新的速度就大大加快了。因为随机梯度下降算法每次优化的只是某一条数据上的损失函数，所以不代表在全部数据上的损失函数更小。可能无法达到局部最优。
+实际中，一般采用这两个算法的折中--每次计算一部分训练数据的损失函数。这个一部分的数据称为一个 **batch**.通过矩阵运算，每次在一个batch上优化神经网络的参数并不会比单个数据慢太多。另一方面，每次使用一个 batch可以大大减少收敛所需要的迭代的次数，同时可以使收敛到的结果更加接近梯度下降的效果.
+
+## 神经网络进一步优化
+首先介绍通过 **指数衰减** 的方法设置梯度下降算法中的 **学习率** ，通过指数衰减的学习率即可以让模型在训练的前期快速接近较优解，又可以保证模型在训练后期不会有太大的波动，从而更加接近局部最优。
+
+### 学习率的设置
+
+需要设置学习率(learing rate)控制参数更新的速度。本小节将进一步介绍如何设置学习率。学习率决定了参数每次更新的幅度，如果幅度过大会产生震荡，过小会收敛过慢，TF提供了 -- **指数衰减法**
+> decayed_learning_rate = learning_rate * decay_rate ^(global_step / decay_steps)
+
+其中decayed_learning_rate为每一轮优化时使用的学习率，learning_rate为事先设定的 **初始学习率**， decay_rate 为 **衰减系数**，decay_steps为 **衰减速度**。**tf.train.exponential_decay** 函数可以通过设置参数staircase选择不同的衰减方式。 staircase的默认值为False，此时如下图。
+![](picture/2019-03-02-19-54-36.png)
+当staircase的值被设置为Ture时，global_step / decay_steps会被转成整数，这使得学习率成为一个阶梯函数(staircase function),在这样的设置下，decay_steps通常代表了 **完整使用一遍训练数据所需要的迭代轮数**。这个迭代轮数也就是 **总训练样本数** 除以 **每一个batch中的训练样本数** 。这种设置的常用场景是每完整地过完一边训练数据，学习率就减小一次。这可以使得训练数据集中的 **所有数据** 都对 **模型训练** 有 **相等** 的作用。当使用连续的指数衰减学习率时，不用的训练数据都有 **不同的学习率** ，而当学习率减小时，对应的训练数据对模型训练结果的影响也就 **小了** 。如下：
+
+```python
+'''
+tf.train.exponential_decay(
+    learning_rate,
+    global_step,
+    decay_steps,
+    decay_rate,
+    staircase=False,
+    name=None
+)
+'''
+global_step = tf.Variable(0)
+
+#通过expoential_decay函数生成学习率。
+learning_rate = tf.train.exponential_decay(
+    0.1,global_step,100,0.96,staircase = True
+)
+# 使用指数衰减的学习率。在minimize函数中传入global_step将自动更新
+#global_step参数，从而使得学习率也得到相应的更新
+#GradientDescentOptimizer(self, learning_rate, use_locking=False,
+learning_setp = tf.train.GradientDescentOptimizer(learning_rate)\
+    .minimize(...my loss...,global_step=global_step)
+```
+上面这段代码中设定了初始学习率维0.1，因为指定了 staircase=True,所以每训练100轮以后，学习率乘以0.96.
+
+### 过拟合问题
+过拟合，指的是当一个模型过于复杂之后，它可以很好地“记忆”每一个训练数据中随机噪音的部分而忘记了要去“学习”训练数据中通用的趋势。
+![](picture/2019-03-03-13-02-27.png)
+为了避免过拟合问题，常用 **正则化**，用于衡量模型的复杂程度。L1正则化会让参数变得稀疏，而L2正则化则不会。之所以L2正则化不会让参数变得稀疏的原因：是当参数很小时，比如0.001，这个参数的平方基本上就可以忽略了，于是模型不会进一步将这个参数调整为0.
+其次L1正则化的计算公式不可导，而L2正则化公式可导。因为在优化时需要计算损失函数的偏导数，所以对含有L2正则化损失函数的优化更加简洁，优化带L1正则化的损失函数更加复杂，而且优化方法有很多种，在实践中，也可以将L1,L2正则化同时使用：
+$$ R(W) = \sum_i \alpha |w_i|+ (1-\alpha)w_i^2 $$
+TF可以优化任意形式的损失函数，下面时带L2正则化的损失函数定义：
+```pyhton
+w = tf.Variable(tf.random_normal([2,1],stddev = 1,seed=1))
+y = tf.matmul(x,w)
+
+loss = tf.reduce_mean(tf.square(y_ - y))+ tf.contrib.layers.l2_regularizer(lambda)(w)
 ```
