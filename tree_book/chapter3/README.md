@@ -267,7 +267,13 @@ learning_setp = tf.train.GradientDescentOptimizer(learning_rate)\
 ### 过拟合问题
 过拟合，指的是当一个模型过于复杂之后，它可以很好地“记忆”每一个训练数据中随机噪音的部分而忘记了要去“学习”训练数据中通用的趋势。
 ![](picture/2019-03-03-13-02-27.png)
-为了避免过拟合问题，常用 **正则化**，用于衡量模型的复杂程度。L1正则化会让参数变得稀疏，而L2正则化则不会。之所以L2正则化不会让参数变得稀疏的原因：是当参数很小时，比如0.001，这个参数的平方基本上就可以忽略了，于是模型不会进一步将这个参数调整为0.
+为了避免过拟合问题，常用 **正则化**，用于衡量模型的复杂程度。**正则化**的思想就是在损失函数中加入刻画模型复杂程度的指标。损失函数为 $J(\theta)$,那么在优化的时候是优化 $J(\theta) + \lambda R(w)$. $R(W)$刻画的是模型的复杂度，一般模型的复杂度只由权重w决定, $\lambda $表示模型复杂损失在总损失中的比例。
+
+L1正则化会让参数变得稀疏，而L2正则化则不会。之所以L2正则化不会让参数变得稀疏的原因：是当参数很小时，比如0.001，这个参数的平方基本上就可以忽略了，于是模型不会进一步将这个参数调整为0.
+L1计算公式：
+$$ R(w) = ||w||_1 = \sum_i |w_i| $$
+L2计算公式：
+$$ R(w) = ||w||_2^2 = \sum_i |w_i^2| $$
 其次L1正则化的计算公式不可导，而L2正则化公式可导。因为在优化时需要计算损失函数的偏导数，所以对含有L2正则化损失函数的优化更加简洁，优化带L1正则化的损失函数更加复杂，而且优化方法有很多种，在实践中，也可以将L1,L2正则化同时使用：
 $$ R(W) = \sum_i \alpha |w_i|+ (1-\alpha)w_i^2 $$
 TF可以优化任意形式的损失函数，下面时带L2正则化的损失函数定义：
@@ -277,3 +283,153 @@ y = tf.matmul(x,w)
 
 loss = tf.reduce_mean(tf.square(y_ - y))+ tf.contrib.layers.l2_regularizer(lambda)(w)
 ```
+在上面的程序中，loss为定义的损失函数，它由两个部分组成。第一个部分是 **均方误差损失函数**，它刻画了模型在训练数据上的表现。第二个部分就是 **正则化**， 它防止模型过度拟合训练数据中的噪音。lambda参数表示了正则化项的 **权重**，也就是$\lambda $. w为需要计算正则化损失的参数。TF 提供了 *tf.contrib.layers.l2_regularizer* 函数，可以计算一个给定参数的 L2正则化项的值。
+```python
+weights = tf.constant([[1.0,-2.0],[-3.0,4.0]])
+with tf.Session() as sess:
+    #输出为:(1+2+3+4)*0.5=5
+    print(sess.run(tf.contrib.layers.l1_regularizer(0.5)(weights)))
+    #输出为：(1+4+9+16)/2 *0.5=7.5,在TF中，会将L2除以2使得求导得到的结果更加简洁
+    print(sess.run(tf.contrib.layers.l2_regularizer(0.5)(weights)))
+```
+在简单的神经网络中，这样的方式就可以很好的计算带正则化的损失函数了。但是当神经网络的参数增多以后，这样的方式首先可能导致损失函数loss的定义很长，可读性差且容易出错。更为主要的是，当网络结构复杂之后定义网络结构的部分和计算损失函数的部分可能不在同一个函数中，这样通过变量这种方式计算损失函数就不方便了。为了解决这个问题，可以使用TF中提供的 **集合(collection)**.集合可以在一个计算图中保存一组实体(比如张量)。以下代码给出了通过集合计算一个5层神经网络带L2正则化的损失函数的计算方法。
+```python
+import tensorflow as tf 
+#获取一层神经网络边上的权重，并将这个权重的L2正则化损失加入
+#名称为“losses”的集合中
+def get_weight(shape,lambda):
+    #生成一个变量
+    var = tf.Variable(
+        tf.random_normal(shape),dtype=tf.float32)
+    #add_to_collection 函数将这个新生成变量的L2正则化损失项加入集合
+    #这个函数的第一个参数“losses”是集合的名字，
+    #第二个参数是要加入这个集合的内容
+    tf.add_to_collection(
+        'losses',tf.contrib.layers.l2_regularizer(lambda)(var)
+    )
+    #返回生成的权重变量
+    return var
+
+x = tf.placeholder(tf.float32,shape=(None,2))
+y_ = tf.placeholder(tf.float32, shape=(None,1))
+batch_size = 8
+#定义了每一层网络中节点的个数
+layer_dimension = [2,10,10,10,1]
+#神经网络的层数
+n_layers = len(layer_dimension)
+
+#这个变量维护前向传播时最深层的节点，开始的时候就是输入层
+cur_layer = x
+#当前层的节点个数
+in_dimension = layer_dimension[0]
+
+#通过一个循环来生成5层全连接的神经网络结构
+for i in range(1,n_layers):
+    # layer_dimension[i]为下一层的节点个数
+    out_dimension = layer_dimension[i]
+
+    #生成当前层中权重的变量，并将这个变量的L2正则化损失加入计算图上的集合
+    weight = get_weight([in_dimension,out_dimension], 0.001)
+    bias = tf.Variable(tf.constant(0.1,shape=[out_dimension]))
+
+    #使用RELU激活函数
+    cur_layer = tf.nn.relu(tf.matmul(cur_layer,weight) + bias)
+
+    #进入下一层之前将下一层的节点个数更新为当前层节点个数
+    in_dimension = layer_dimension[i]
+
+#在定义神经网络前向传播的同时已经将所有的L2正则化损失加入了图上的集合
+#这里只需要计算刻画模型在训练数据上表现的损失函数
+mse_loss = tf.reduce_mean(tf.square(y_ - cur_layer))
+
+#将均方误差损失函数加入损失集合
+tf.add_to_collection('losses', mse_loss)
+
+# get_collection返回一个列表，这个列表是所有这个集合中的元素。在这个样例中，
+# 这些元素就是损失函数的不同部分，将它们加起来就可以得到最终的损失函数
+loss = tf.add_n(tf.get_collection('losses'))
+
+```
+
+### 滑动平均模型
+这个小节将介绍一个可以使模型在测试数据上更健壮的方法--滑动平均模型，在采用随机梯度下降算法训练神经网络时，使用滑动平均模型在很多应用中都可以在一定程度提高最终模型在测试数据上的表现。
+在TF中提供了**tf.train.ExponentialMovingAverage**来实现滑动平均模型。在初始化ExponentialMovingAverage时，需要提供一个衰减率(decay)，这个衰减率将用于控制 **模型更新的速度**。 ExponentialMovingAverage 对每一个变量都会维护一个 **影子变量**(shadow variable)，这个**影子变量的初始值**就是 **相应变量的初始值，** 而每次运行变量更新时，影子变量的值会更新为：
+$$shadow\_variable = decay * shadow\_cariable + (1-decay)*variable $$
+其中shadow_variable为影子变量，variable为待更新的变量，decay为衰减率。从公式中可以看到，decay决定了模型更新的速度，decay越大模型越趋于稳定。在实际应用中，decay一般会设成非常接近1的数(比如0.999或0.9999)。为了让模型前期更新得更快，Exponential还提供 **num_updates**参数来动态设置decay的大小。如果在Exponential初始化时提供了 num_updates参数，那么每次使用的衰减率将是：
+$$ min\{decay,\frac{1+num\_updates}{10+num\_updates}\} $$
+```python
+import tensorflow as tf 
+
+#定义一个变量用于计算滑动平均，这个变量的初值为0，注意这里手动指定了变量的
+#类型为tf.float32,因为所有需要计算滑动平均的变量必须是 实数型
+v1 = tf.Variable(0,dtype=tf.float32)
+
+#这里step变量模拟神经网络中迭代的轮数，可以用于动态控制衰减率,step即为num_updates参数
+step = tf.Variable(0,trainable=False)
+
+#定义一个滑动平均类(class)。初始化时给定了衰减率(0.99)和控制衰减率
+#的变量step
+ema = tf.train.ExponentialMovingAverage(0.99,step)
+
+#定义一个更新变量滑动平均的操作。这里需要给定一个列表，每次执行这个操作时
+#这个列表中的变量都会被更新
+maintain_averages_op = ema.apply([v1])
+
+with tf.Session() as sess:
+    #初始化所有的变量
+    tf.global_variables_initializer().run()
+
+    #获取ema.average(v1)获取滑动平均之后变量的取值。在初始化之后变量v1和v1的
+    #滑动平均都为0
+    print(sess.run([v1,ema.average(v1)])) #输出[0.0.0.0]
+
+    #更新变量v1的值到5
+    sess.run(tf.assign(v1,5))
+
+    #更新v1的滑动平均值。衰减率为 min{0.99, (1+step)/(10+step)=0.1}=0.1
+    #所以v1的滑动平均会被更新为 0.1*0+0.9*5=4.5
+    sess.run(maintain_averages_op)
+    print(sess.run([v1,ema.average(v1)])) #输出为[5.0,4.5]
+
+    #更新step的值为10000
+    sess.run(tf.assign(step,10000))
+    #更新v1的值为10
+    sess.run(tf.assign(v1,10))
+    #更新v1的滑动平均值。衰减率为min{0.99,(1+step)/(10+step)=0.999} = .099
+    #所以v1的滑动品均会被跟新为 0.99*4.5+0.01*10 = 4.555
+    sess.run(maintain_averages_op)
+    print(sess.run([v1,ema.average(v1)])) #输出为[10,4.5549998]
+
+    #再次更新滑动平均值，得到的新滑动平均值为 0.99*4.55+0.01*10=4.60
+    sess.run(maintain_averages_op)
+    print(sess.run([v1,ema.average(v1)])) #输出为[10,4.60]
+
+```
+
+### PS:详细介绍滑动平均模型：
+Exponential Moving Average又称为 **指数加权移动平均算法**
+开始例子。首先这是一年365天的温度散点图，以天数为横坐标，温度为纵坐标，你可以看见各个小点分布在图上，有一定的曲线趋势，但是并不明显。
+![](picture/2019-03-14-22-25-34.png)
+* 设定初始值 $V_0$,定义每一天的温度为 $a_1,a_2,a_3....$
+* 计算出 $V_1,V_2...$来代替每一天的温度
+* 计算公式为 $V_1= V_0*0.9+a_1(1-0.9),V_2= V_1*0.9+a_2(1-0.9)...V_t = V_{t-1}*0.9 + a_t(1-0.9)$
+* 将所有的$V_t$计算完以后画图
+![](picture/2019-03-14-22-25-22.png)
+V值就是指数加权平均数，整个过程就是指数加权平均算法，它很好的把一年的温度曲线给拟合了出来。把0.9抽象为$\beta$，有：
+$$V_t = V_{t-1}*\beta + a_t(1-\beta)$$
+
+β这个值的意义是什么？实际$V_t \approx 1/(1-\beta)$天的平均温度，假设β等于0.9，1/(1 - β) 就等于10，也就是$V_t$等于前十天的平均温度，这个说可能不太看得出来；假设把β值调大道接近1，例如，将β等于0.98，1/(1-β)=50，按照刚刚的说法也就是前50天的平均温度，然后求出V值画出曲线，如图所示： 
+![](picture/2019-03-14-22-30-07.png)
+绿线就是β等于0.98时候的曲线，可以明显看到绿线比红线的变化更迟，红线达到某一温度，绿线要过一阵子才能达到相同温度。因为绿线是前50天的平均温度，变化就会更加缓慢，而红线是最近十天的平均温度，只要最近十天的温度都是上升，红线很快就能跟着变化。所以直观的理解就是，$V_t$是前1/(1-β)天的平均温度。 
+再看看另一个极端情况：β等于0.5，意味着vt≈最近两天的平均温度，曲线如下黄线： 
+![](picture/2019-03-14-22-30-50.png)
+和原本的温度很相似，但曲线的波动幅度也相当大！
+#### 偏差修正
+指数加权平均值通常都需要偏差修正，TensorFlow中提供的ExponentialMovingAverage()函数也带有偏差修正。
+
+首先看一下为什么会出现偏差，再来说怎么修正。当β等于0.98的时候，还是用回上面的温度例子，曲线实际上不是像绿线一样，而是像紫线： 
+![](picture/2019-03-14-22-31-45.png)
+你可以注意到在紫线刚刚开始的时候，曲线的值相当的低，这是因为在一开始的时候并没有50天（1/(1-β)为50）的数据，而是只有寥寥几天的数据，相当于少加了几十天的数据，所以vt的值很小，这和实际情况的差距是很大的，也就是出现的偏差。 
+而在TensorFlow中的ExponentialMovingAverage()采取的偏差修正方法是：使用num_updates来动态设置β的大小:
+$$ min\{decay,\frac{1+num\_updates}{10+num\_updates}\} $$
+在数据迭代的前期，数据量比较少的时候，(1+num_updates)/(10+num_updates)的值比较小，使用这个值作为β来进行vt的计算，所以在迭代前期就会像上面的红线一样，和原数据更加接近。举个例子，当天数是第五天，β为0.98，那么(1+num_updates)/(10+num_updates) = 6/15 = 0.4，相当于最近1.6天的平均温度，而不是β=0.98时候的50天，这样子就做到了偏差修正。

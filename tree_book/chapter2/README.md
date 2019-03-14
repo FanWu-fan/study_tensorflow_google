@@ -313,3 +313,7 @@ with tf.Session() as sess:
     print("w1: ", sess.run(w1))
     print("w2: ", sess.run(w2))
 ```
+
+
+
+
