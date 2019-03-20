@@ -141,7 +141,7 @@ print(tf.reduce_mean(v3).eval())
 ```python
 corss_entropy = tf.nn.softmax_cross_entropy_edge_with_logits(y,y_)
 ```
-其中 **y**代表了原始神经网络的输出结果，而 **y_**给了标准答案。这样通过一个命令就可以得到使用了 Sofrmax 回归之后的交叉熵。在只有一个正确答案的分类问题中，TF提供了 **tf.nn.sparse_softmax_cross_entropy_with_logits** sparse稀疏的
+其中 **y**代表了原始神经网络的输出结果，而 **y_** 给了标准答案。这样通过一个命令就可以得到使用了 Sofrmax 回归之后的交叉熵。在只有一个正确答案的分类问题中，TF提供了 **tf.nn.sparse_softmax_cross_entropy_with_logits** sparse稀疏的
 
 ### 回归问题
 
@@ -430,7 +430,7 @@ with tf.Session() as sess:
     sess.run(tf.assign(step,10000))
     #更新v1的值为10
     sess.run(tf.assign(v1,10))
-    #更新v1的滑动平均值。衰减率为min{0.99,(1+step)/(10+step)=0.999} = .099
+    #更新v1的滑动平均值。衰减率为min{0.99,(1+step)/(10+step)=0.999} = 0.99
     #所以v1的滑动品均会被跟新为 0.99*4.5+0.01*10 = 4.555
     sess.run(maintain_averages_op)
     print(sess.run([v1,ema.average(v1)])) #输出为[10,4.5549998]
@@ -447,10 +447,10 @@ Exponential Moving Average又称为 **指数加权移动平均算法**
 
 ![](picture/2019-03-14-22-25-34.png)
 
-* 设定初始值 $V_0$,定义每一天的温度为 $a_1,a_2,a_3....$
-* 计算出 $V_1,V_2...$来代替每一天的温度
-* 计算公式为 $V_1= V_0*0.9+a_1(1-0.9),V_2= V_1*0.9+a_2(1-0.9)...V_t = V_{t-1}*0.9 + a_t(1-0.9)$
-* 将所有的$V_t$计算完以后画图
+* 设定初始值 $ V_0 $ ,定义每一天的温度为 $ a_1,a_2,a_3.... $
+* 计算出 $ V_1,V_2... $来代替每一天的温度
+* 计算公式为 $ V_1= V_0*0.9+a_1(1-0.9),V_2= V_1*0.9+a_2(1-0.9)...V_t = V_{t-1}*0.9 + a_t(1-0.9) $
+* 将所有的 $ V_t $ 计算完以后画图
 
 ![](picture/2019-03-14-22-25-22.png)
 
