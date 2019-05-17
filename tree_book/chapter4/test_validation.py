@@ -18,7 +18,7 @@ LEARNING_RATE_BASE = 0.8  # 基础的学习率
 LEARNING_RATE_DECAY = 0.99  # 学习率的衰减率
 
 REGULARIZATION_RATE = 0.0001  # 描述模型复杂度的正则化项在损失函数中的系数
-TRAINING_STEPS = 10000  # 训练轮数
+TRAINING_STEPS = 30000  # 训练轮数
 MOVING_AVERAGE_DEVAY = 0.99  # 滑动平均衰减率
 
 # 一个辅助函数，给定神经网络的输入和所有参数，计算神经网络的前向传播结果。在这里
@@ -27,38 +27,8 @@ MOVING_AVERAGE_DEVAY = 0.99  # 滑动平均衰减率
 # 通过RELU激活函数实现了去线性化。在这个函数中也支持传入用于计算参数平均值的类
 # 这样方便在测试时使用 滑动平均模型
 
-'''
-#采用tf.variable_scope进行改进
-def inference(input_tensor,reuse=False):
-    with tf.variable_scope("layer1",reuse=reuse):
-        #根据传进来的reuse来判断是创建新变量还是使用已经创建
-        #好的。在第一次构造网络时需要创建新的变量，以后每次调用
-        #这个函数都直接使用reuse=True就不需要每次将变量传进来了
-        weights = tf.get_variable(
-            "weights",[INPUT_NODE,LAYER1_NODE],initializer=tf.truncated_normal_initializer(stddev=0.1))
 
-        biases = tf.get_variable(
-            "biases",[LAYER1_NODE],initializer=tf.constant_initializer(0.0))
-        
-        layer1 = tf.nn.relu(tf.matmul(input_tensor,weights)+biases)
-
-        #类似的定义第二层神经网络的变量和前向传播结果
-    with tf.variable_scope("layer2",reuse=reuse):
-        weights = tf.get_variable(
-            "weights",[LAYER1_NODE,OUTPUT_NODE],initializer=tf.truncated_normal_initializer(stddev=0.1))
-
-        biases = tf.get_variable("biases",[OUTPUT_NODE],initializer=tf.constant_initializer(0.0))
-
-        layer2 = tf.matmul(layer1,weights)+biases
-        
-        #返回最后的前向传播结果
-        return layer2
-    
-x = tf.placeholder(tf.float32,[None,INPUT_NODE],name='x-input')
-y = inference(x)
-'''
-############################################################################
-def inference(input_tensor, avg_class, weights1, biases1, weights2, biases2):
+def interence(input_tensor, avg_class, weights1, biases1, weights2, biases2):
     # 当没有提供滑动平均类时，直接使用参数当前的取值
     if avg_class == None:
         layer1 = tf.nn.relu(tf.matmul(input_tensor, weights1) + biases1 )
@@ -85,7 +55,7 @@ def inference(input_tensor, avg_class, weights1, biases1, weights2, biases2):
 
 def train(mnist):
     x = tf.placeholder(tf.float32, [None, INPUT_NODE], name='x-input')
-    y_ = tf.placeholder(tf.float32, [None, OUTPUT_NODE], name='y-input')
+    y_ = tf.placeholder(tf.float32, [None, OUTPUT_NODE], name='y-input')  #y_ 的意思是 y_input
 
     # 生成隐藏层的参数 正态分布，但如果随机出来的值偏离平均值超过2个标准差，
     # 那么这个数将会被重新随机
@@ -104,7 +74,7 @@ def train(mnist):
 
     # 计算在当前参数下神经网络前向传播的结果，这里给出的用于计算滑动平均的类为 None,
     # 所以函数不会使用参数的 滑动平均值
-    y = inference(x, None, weights1, biases1, weights2, biases2)
+    y = interence(x, None, weights1, biases1, weights2, biases2)
 
     # 定义存储训练轮数的变量，这个变量不需要计算滑动平均值，所以这里指定这个变量为
     # 不可训练的变量(trainable = False).在使用TF训练神经网络时，
@@ -116,8 +86,8 @@ def train(mnist):
         MOVING_AVERAGE_DEVAY, global_step
     )
 
-    # 在所以代表神经网络参数的变量上使用 滑动平均。其他辅助变量(比如 global_step)就不
-    # 需要了，tf.trainable_variables 返回的就是图上集合
+    # 在所有代表神经网络参数的变量上使用 滑动平均。其他辅助变量(比如 global_step)就不
+    # 需要了，tf.trainable_variables 返回的就是图上的可训练集合
     # tf.GraphKeys.TRAINABLE_VARIABLES中的元素。这个集合的元素就是所有没有指定
     # trainable = False的参数
     variables_averages_op = variable_averages.apply(
@@ -129,7 +99,7 @@ def train(mnist):
     而是会维护一个影子变量来记录其滑动平均值。所以当需要使用这个滑动平均值时，
     需要明确调用 average 函数
     '''
-    average_y = inference(
+    average_y = interence(
         x, variable_averages, weights1, biases1, weights2, biases2
     )
 
@@ -204,7 +174,7 @@ def train(mnist):
     # batch的一维数组，这个一维数组中的值就表示了每一个样例对应的数字识别结果。
     # tf.equal判断两个张量的每一维是否相等，如果相等返回 True, 否者返回 False
 
-    correct_prediction = tf.equal(
+    correct_prediction = tf.equa
         tf.argmax(average_y, 1), tf.argmax(y_, 1))
 
     # 这个运算首先将一个布尔型的数值转化为实数型，然后计算平均值，这个平均值
@@ -241,7 +211,6 @@ def train(mnist):
 
         # 在训练结束之后，在测试数据上检测神经网络模型的最终正确率
         test_acc = sess.run(accuracy, feed_dict=test_feed)
-        
         print("After %d training step(s), test accuracy using average,model is %g" % (
             TRAINING_STEPS, test_acc))
 
