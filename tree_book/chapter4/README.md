@@ -957,3 +957,194 @@ message CheckpointState{
 ## 4.5 TF最佳实践样例程序
 在4.2节中给出了完整的TF程序来解决MNIST问题，然而这个程序的可扩展性不好，计算前向传播的函数需要将所有变量都传入，有大量冗余代码，可读性差。本节，介绍一个TF训练的神经网络模型，将训练和测试分成两个独立的程序，将前向传播抽象成一个独立的库函数，因为神经网络的前向传播过程在训练和测试的过程中都会用到，所以通过库函数的方式使用。
 本节提供重构之后的程序来解决MNIST问题，重构之后的代码将会被拆成3个程序，第一个是 mnist_inference.py,定义了前向传播过程以及神经网络中的参数。第二个 mnist_trian.py,定义了神经网络训练过程。第三个 mnsit_eval.py。定义了测试过程。
+```python
+import tensorflow as tf 
+#定义神经网络结构的相关参数
+INPUT_NODE = 784
+OUTPUT_NODE = 10
+LAYER1_NODE = 500
+
+'''
+通过tf.get_variable函数来获取变量。在训练神经网络时会创建这些变量；在测试时会通过
+保存的模型加载这些变量的取值，而且更加方便的是，因为可以在变量加载时将滑动平均变量
+重命名，所以可以直接通过同样的名字在训练时使用变量自身，而在测试时使用变量的滑动平均值。
+在这个函数中也会将变量的正则化损失加入损失集合。
+'''
+def get_weight_variable(shape,regularizer):
+    weights = tf.get_variable(
+        "weights",shape,initializer=tf.truncated_normal_initializer(stddev=0.1))
+
+    #当给出了正则化生成函数时，将当前变量的正则化损失加入名字为losses的集合，在这里
+    #使用了 add_to_collection函数将一个张量加入一个集合，而这个集合的名称为 losses
+    #这是自定义的集合，不再TF自动管理的集合列表中。
+    if regularizer !=None:
+        tf.add_to_collection("losses",regularizer(weights))
+    return weights
+
+def inference(input_tensor,regularizer):
+    #声明第一层神经网络的变量并完成前向传播结果
+    with tf.variable_scope("layer1"):
+        #这里在训练和测试过程中没有同一个程序多次调用这个函数，如果在同一个程序中多次调用，
+        #在第一次调用之后需要将reuse参数设置为True
+        weithts = get_weight_variable(
+            [INPUT_NODE,LAYER1_NODE],regularizer)
+        biases = tf.get_variable("biases",[LAYER1_NODE],initializer=tf.constant_initializer(0.0))
+        layer1 = tf.nn.relu(tf.matmul(input_tensor,weithts) + biases)
+
+    with tf.variable_scope("layer2"):
+        weithts = get_weight_variable(
+            [LAYER1_NODE,OUTPUT_NODE],regularizer)
+        biases = tf.get_variable("biases",[OUTPUT_NODE],initializer=tf.constant_initializer(0.0))
+        layer2 = tf.matmul(layer1,weithts) + biases
+
+    return layer2
+```
+```python
+import os
+import sys
+import tensorflow as tf
+from tensorflow.examples.tutorials.mnist import input_data
+
+import mnist_inference
+
+import cv2
+
+# 配置神经网络参数
+BATCH_SIZE = 100
+LEARNING_RATE_BASE = 0.8
+LEARNINT_RATE_DECAY = 0.99
+REGULARAZTION_RATE = 0.0001
+TRAINING_STEPS = 30000
+MOVING_AVERAGE_DECAY = 0.99
+# 模型保存的路径和文件名
+MODEL_SAVE_PATH = ".\model"
+MODEL_NAME = "model.ckpt"
+
+
+def train(mnist):
+    x = tf.placeholder(
+        tf.float32, [None, mnist_inference.INPUT_NODE], name="x-input"
+    )
+    y_ = tf.placeholder(
+        tf.float32, [None, mnist_inference.OUTPUT_NODE], name="y-input"
+    )
+
+    regularizer = tf.contrib.layers.l2_regularizer(REGULARAZTION_RATE)
+    y = mnist_inference.inference(x, regularizer)
+    global_step = tf.get_variable(
+        "global_step",initializer=0, trainable=False)
+
+    # 和之前一样类似的定义损失函数、学习率、滑动平均操作以及训练过程
+    variable_averages = tf.train.ExponentialMovingAverage(
+        MOVING_AVERAGE_DECAY, global_step)
+    variables_averages_op = variable_averages.apply(tf.trainable_variables())
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+       logits = y, labels = tf.argmax(y_, 1))
+    cross_entropy_mean = tf.reduce_mean(cross_entropy)
+    loss = cross_entropy_mean + tf.add_n(tf.get_collection('losses'))
+
+    learning_rate = tf.train.exponential_decay(
+        LEARNING_RATE_BASE,
+        global_step,
+        mnist.train.num_examples / BATCH_SIZE,
+        LEARNINT_RATE_DECAY
+    )
+
+    train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(
+        loss, global_step=global_step
+    )
+    with tf.control_dependencies([train_step,variables_averages_op]):
+        train_op = tf.no_op(name='train')
+
+    # 初始化TF持久化类
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        tf.global_variables_initializer().run()
+
+        # 在训练过程中不在测试模型在验证数据上的表现，验证和测试的过程将会有一个
+        # 独立的程序来完成
+        # _,对应的是3个返回值
+        for i in range(TRAINING_STEPS):
+            xs,ys = mnist.train.next_batch(BATCH_SIZE)
+            _,loss_value,step = sess.run(
+                [train_op,loss,global_step],feed_dict={x:xs,y_:ys})
+            
+            if i%100 == 0:
+                # 输出当前的训练情况。这里只输出了模型在当前batch上的损失函数大小。
+                # 通过损失函数的大小可以大概了解训练的情况，在验证数据集上的正确率信息会有
+                # 一个单独的程序来生成
+                print("After %d training step(s),loss on training batch is %g."%(step,loss_value))
+                # os.path.join路径拼接
+                saver.save(sess,os.path.join(MODEL_SAVE_PATH,MODEL_NAME),global_step=global_step)
+
+def main(argv = None):
+    mnist = input_data.read_data_sets('path/to/MNIST_data',one_hot = True)
+    train(mnist)
+if __name__ == '__main__':
+    tf.app.run()
+```
+```python
+import time
+import tensorflow as tf 
+from tensorflow.examples.tutorials.mnist import input_data
+
+#加载mnist_inference.py和mnist_train.py中定义的常量和函数
+import mnist_inference
+import mnist_train
+
+#每10秒加载一次最新的模型，并在测试数据上测试最新模型的正确率
+EVAL_INTERVAL_SECS =10
+
+def evaluate(mnist):
+    with tf.Graph().as_default() as g:
+        x = tf.placeholder(
+            tf.float32,[None,mnist_inference.INPUT_NODE],name = 'x-input'
+        )
+        y_ = tf.placeholder(
+            tf.float32,[None,mnist_inference.OUTPUT_NODE],name = 'y-input'
+        )
+        validate_feed = {x:mnist.validation.images, y_:mnist.validation.labels}
+
+        #直接通过调用封装好的函数计算前向传播的结果，因为测试时不关心正则化损失的值
+        #所以这里用于计算正则化损失的函数被设置为 None
+        y = mnist_inference.inference(x,None)
+
+        correction_prediction = tf.equal(tf.argmax(y,1),tf.argmax(y_,1))
+        accuracy = tf.reduce_mean(tf.cast(correction_prediction,tf.float32))
+
+        #通过变量重命名的方式来加载模型，这样在前向传播的过程中就不需要调用 滑动平均函数来
+        #获取平均值了，这样就可以完全共用mnsit_inference.py中定义的前向传播过程
+        variable_averages = tf.train.ExponentialMovingAverage(mnist_train.MOVING_AVERAGE_DECAY)
+        #{'v/ExponentialMovingAverage': <tf.Variable 'v:0' shape=() dtype=float32_ref>}
+        varialbles_to_restore = variable_averages.variables_to_restore()
+        saver = tf.train.Saver(varialbles_to_restore)
+
+        #每个EVAL_INTERVAL_SECS 秒调用一次计算正确率的过程以检查训练过程中正确率的
+        #变化
+        while True:
+            with tf.Session() as sess:
+                #tf.train.get_checkpoint_state函数会通过checkpoint文件自动
+                #找到目录中最新模型的文件名
+                ckpt = tf.train.get_checkpoint_state(
+                    mnist_train.MODEL_SAVE_PATH
+                )
+                if ckpt and ckpt.model_checkpoint_path:
+                    #加载模型
+                    saver.restore(sess,ckpt.model_checkpoint_path)
+                    #通过文件名得到模型保存时迭代的轮数
+                    global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+                    accuracy_score = sess.run(accuracy,feed_dict = validate_feed)
+                    print("After %s training step(s),validation accuracy = %g"%(global_step,accuracy_score))
+
+                else:
+                    print('No check point file found')
+                    return
+                time.sleep(EVAL_INTERVAL_SECS)
+                
+def main(argv = None):
+    mnist = input_data.read_data_sets('path/to/MNIST_data',one_hot = True)
+    evaluate(mnist)
+
+if __name__ == '__main__':
+    tf.app.run()
+```

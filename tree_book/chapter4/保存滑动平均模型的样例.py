@@ -27,11 +27,13 @@ with tf.Session() as sess:
     print(sess.run([v,ema.average(v)]))#[10.0, 0.099999905]
 
 #############################################################################
+
 #v = tf.get_variable("v",dtype=tf.float32,initializer=0.0)
 saver = tf.train.Saver({"v/ExponentialMovingAverage":v})
 with tf.Session() as sess:
     saver.restore(sess,"./ExponentialMovingAverage_Saver/model.ckpt")
     print(sess.run(v))#0.099999905
+
 ############################################################################
 print(ema.variables_to_restore())
 #{'v/ExponentialMovingAverage': <tf.Variable 'v:0' shape=() dtype=float32_ref>}

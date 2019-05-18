@@ -209,7 +209,7 @@ def train(mnist):
 
     # 这个运算首先将一个布尔型的数值转化为实数型，然后计算平均值，这个平均值
     # 就是模型在这一组数据上的正确率
-
+    #tf.cast将bool转为float32
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
     # 初始化会话并开始训练
