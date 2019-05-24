@@ -719,5 +719,214 @@ with tf.Session() as sess:
 ### 6.4.2 输入文件队列
 https://zhuanlan.zhihu.com/p/27238630
 本小节将介绍如何使用TF中的队列管理输入文件列表。TF可以将数据分为多个 TFRecord文件来提高处理频率。TF提供了tf.train.match_filenames_once函数来获取符合一个正则表达式的所有文件，得到的文件列表可以通过 tf.train.string_input_prodecer函数进行有效管理。
+tf.train.string_input_prodecer函数会使用初始化时提供的文件列表创建一个队列，输入队列中原始的元素为文件列表的所有文件，创建好的输入队列可以作为文件读取函数的参数。每次调用文件读取函数时，该函数会先判断当前是否已有打开的文件可读，如果没有或者打开的文件已经读完，这个函数会从输入队列中出队一个文件并从这个文件中读取数据。
+通过设置 shuffle参数，tf.train.string_input_producer 函数支持随机打乱文件列表中文件出队的顺序，当shuffle参数为True时，文件在加入队列之前会被打乱顺序，所以出队的顺序也是随机的。随机打乱文件顺序以及加入输入队列的过程会跑在一个单独的线程上，这样不会影响文件的速度， tf.train.string_input_prodecer 生成的输入队列可以同时被多个文件读取线程操作，而且输入队列会将队列中的文件均匀地分给不同的线程，不出现有些文件被处理过多次而有些文件还没有被处理过的情况。
+当一个输入队列中的文件都被处理完后，它会将初始化提供的文件列表中的文件全部重新加入队列。 tf.train.string_input_prodecer 函数可以设置 num_epoches 参数来限制加载初始文件列表的最大轮数。当所有的文件都被已经被使用了设定的轮数后，如果继续尝试读取新的文件，输入队列会报 OutOfRange 的错误。在测试 神经网络模型时，因为所有的测试数据只需要使用依次，可以将 num_epoches 设置为1.这样在计算完一轮之后程序将自动停止。下面先生成两个 tfrecord:
+```python
+import tensorflow as tf 
+
+#创建 TFRecord文件的帮助函数
+def _int64_feature(value):
+    return tf.train.Feature(int64_list = tf.train.Int64List(value=[value]))
 
 
+#模拟海量数据情况下将数据写入不同的文件。num_shards 定义了总共写入多少个文件
+# instances_per_shard 定义了每个文件中有多少个数据
+num_shards = 2
+isinstances_per_shard =2
+
+for i in range(num_shards):
+    #将数据分为多个文件时，可以将不同文件以类似0000n-of-0000m的后缀区分。其中m
+    #表示了数据总共被存在了多少个文件中，n表示了当前文件的编号。式样的方式既方便了
+    #通过正则表达式获取文件列表，又在文件中加入了更多的信息。
+    filename = ('./path/to/data.tfrecords-%.5d-of-%.5d'%(i,num_shards))
+    writer = tf.python_io.TFRecordWriter(filename)
+    #将数据封装成EXample结构并写入TFRECOed格式
+    for j in range(isinstances_per_shard):
+        #Example结构仅包含当前样例属兔第几个文件以及当前文件的第几个样本
+        example = tf.train.Example(features= tf.train.Features
+        (feature = {
+            'i':_int64_feature(i),
+            'j':_int64_feature(j)
+        }))
+        writer.write(example.SerializeToString())
+    writer.close()
+
+
+
+#####################################################################################################
+# dataset1 = tf.data.Dataset.from_tensor_slices(tf.random_uniform([4, 10]))
+# print(dataset1.output_types)  # ==> "tf.float32"
+# print(dataset1.output_shapes)  # ==> "(10,)"
+
+
+
+# dataset2 = tf.data.Dataset.from_tensor_slices(
+#    (tf.random_uniform([4]),
+#     tf.random_uniform([4, 100], maxval=100, dtype=tf.int32)))
+# print(dataset2.output_types)  # ==> "(tf.float32, tf.int32)"
+# print(dataset2.output_shapes)  # ==> "((), (100,))"
+
+# dataset3 = tf.data.Dataset.zip((dataset1, dataset2))
+# print(dataset3.output_types)  # ==> (tf.float32, (tf.float32, tf.int32))
+# print(dataset3.output_shapes)  # ==> "(10, ((), (100,)))"
+
+
+#############################################################################################################
+
+```
+下面是使用 tf.train.match_filenames_once函数和tf.train_string_input_producer函数
+```python
+import tensorflow as tf 
+
+#使用tf.train.match_filenames_once函数来获取文件列表
+files = tf.train.match_filenames_once("./path/to/data.tfrecords-*")
+
+#通过tf.train.string_input_poduce函数创建输入队列，输入队列中的文件列表为
+#tf.train.match_filenames_once 函数获取的文件列表。这里将shuffle参数设为False
+#来避免随机打乱读文件的顺序。但一般在解决真实问题时，会将 shuffle参数设置为 true
+filename_queue = tf.train.string_input_producer(files,shuffle=False,num_epochs=1)
+
+reader = tf.TFRecordReader()
+_,serialized_example = reader.read(filename_queue)
+features = tf.parse_single_example(
+    serialized_example,
+    features =
+    {
+        'i':tf.FixedLenFeature([],tf.int64),
+        'j':tf.FixedLenFeature([],tf.int64)
+    }
+)
+
+with tf.Session() as sess:
+    #虽然在本程序段中没有声明任何变量，但是用 tf.trian.match_filenames_once函数时需要
+    #初始化一些变量
+    tf.local_variables_initializer().run()
+    print(sess.run(files))
+    '''
+[b'.\\path\\to\\data.tfrecords-00000-of-00002'
+ b'.\\path\\to\\data.tfrecords-00001-of-00002']
+    '''
+
+    #声明tf.train.Corrdinator类来协同不同线程，并且启动线程
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess,coord=coord)
+
+    #多次执行获取数据的操作
+    for i in range(6):
+        print(sess.run([features['i'],features['j']]))
+        '''
+[0, 0]
+[0, 1]
+[1, 0]
+[1, 1]
+[0, 0]
+[0, 1]
+        '''
+    coord.request_stop()
+    coord.join(threads)
+```
+
+### 6.4.2 组合训练数据(batching)
+TF提供 **tf.train.batch** ,和 **tf.train.shffle_batch** 函数来将单个的样例组织成batch的形式输出。这两个函数都会生成一个 **队列**。队列的入队操作是生成单个样例的方法，而每次出队得到的是一个 batch的样例。它们唯一的区别在于是否将数据顺序打乱。
+```python
+   example,label = features['i'],features['j']
+
+    #一个batch中样例的个数
+    batch_size =3
+    #组合样例的队列中最多可以存储的样例个数，这个队列如果太大，那么需要占用许多内存资源：
+    #如果太小，那么出队操作可能会因为没有数据而被阻碍(block),从而导致训练效率降低。一般来说
+    #这个队列的大小会和每一个batch的大小有关，下面一行代码给出了设置队列大小的一种方式
+    capacity = 1000 + 3*batch_size
+
+    #使用tf.train.batch函数来组合样例，[example,label]参数给出了需要组合的元素，一般example和
+    #label分别代表 训练样本和这个样本对应的正确标签。batch_size参数给出了每个batch中样例的个数。
+    # capacity给出了队列最大的容量，当队列长度等于容量时，TF将暂停入队操作，而只是等待元素出队。
+    #元素个数小于容量时，TF重新启动入队
+    example_batch,label_batch = tf.train.batch(
+        [example,label],batch_size=batch_size,capacity=capacity
+    )
+
+    with tf.Session() as sess:
+        tf.global_variables_initializer().run()
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess,coord=coord)
+
+        #获取打印组合之后的样例。在真实问题中，这个输出一般会作为神经网络的输入
+        for i in range(2):
+            cur_example_batch,cur_label_batch = sess.run(
+                [example_batch,label_batch]
+            )
+            print(cur_example_batch,cur_label_batch)
+        coord.request_stop()
+        coord.join(threads)       
+```
+
+### 6.4.5 输入数据处理框架
+```python
+import tensorflow as tf 
+
+#创建文件列表，并通过文件列表创建输入文件队列。在调用输入数据处理流程前，需要
+#统一所有原始数据的格式并将它们存储到TFRecoed文件中
+files = tf.train.match_filenames_once("./path/to/data.tfrecords-*")
+filename_queue =tf.train.string_input_producer(files,shuffle=False)
+
+#计息TFRecoed文件中的数据，这里假设image存储的是图像的原始数据，label为标签
+#height，width和channels
+reader = tf.TFRecordReader()
+_,serialized_example = reader.read(filename_queue)
+features = tf.parse_single_example(
+    serialized_example,
+    features = 
+    {
+        'image': tf.FixedLenFeature([],tf.string),
+        'label': tf.FixedLenFeature([],tf.int64),
+        'height': tf.FixedLenFeature([].tf.int64),
+        'width': tf.FixedLenFeature([],tf.int64),
+        'channels': tf.FixedLenFeature([],tf.int64),
+    }
+)
+image,label = features['image'],features['label']
+height,width = features['height'],features['width']
+channels = features['channels']
+
+#从原始图像数据解析出像素矩阵，并根据图像尺寸还原图像
+decoded_image = tf.decode_raw(image,tf.uint8)
+decoded_image.set_shape([height,width,channels])
+#定义神经网络输入层图片的大小
+image_size=299
+#图像预处理
+distorted_image = prepocess_for_train(
+    decoded_image,image_size,image_size,None
+)
+
+#将处理后的图像和标签数据通过tf.train.shuffle_batch整理成神经网络训练时
+#需要的batch
+min_after_dequeue = 10000
+batch_size = 100
+capacity = min_after_dequeue + 3*batch_size
+image_batch, label_batch = tf.train.shuffle_batch(
+    [distorted_image,label],batch_size=batch_size,capacity=capacity,min_after_dequeue=min_after_dequeue
+)
+#定义神经网络结构以及优化过程，image_batch可以作为输入提供给神经网络的输入层
+#label_batch则提供了输入batch中样例的正确答案
+logit = inference(image_batch)
+loss = calc_loss(logit,label_batch)
+train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+
+#声明绘画并运行神经网络的优化过程
+with tf.Session() as sess:
+    tf.global_variables_initializer().run()
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess,coord=coord)
+
+    #神经网络训练过程
+    for i in range(TRAINING_ROUDNS):
+        sess.run(train_step)
+
+    #停止所有线程
+    coord.request_stop()
+    coord.join()
+```
+
+![](picture/2019-05-24-09-58-39.png)
