@@ -930,3 +930,284 @@ with tf.Session() as sess:
 ```
 
 ![](picture/2019-05-24-09-58-39.png)
+
+## 6.5 数据集(Dataset)
+TF提供一套更高层的数据处理框架，在新的框架中，每一个数据来源被抽象成一个“数据集”，开发者可以以数据集为基本对象，方便地进行batching、随机打乱(shuffle)等操作。从1.3版本起，TF推荐正式使用数据集作为输入数据的首选框架。从1.4版本起，数据集框架从tf.contrib.data迁移到tf.data.成为tf的核心部件。
+
+### 6.5.1 数据集的基本使用方法
+在数据集框架中，每一个数据集代表一个数据来源：数据可能来自一个张量，一个TFRcord文件，一个文本文件，或者经过sharding的一系列文件，等等。由于训练数据通常无法全部写入内存中，从数据集中读取数据时需要使用一个迭代器(iterator)按顺序进行读取，这点与队列的dequeue()和Reader的read()操作类似，与队列相似，数据集也是计算图上的一个节点。
+如下，从张量创建一个数据集，遍历这个数据集，并对每个输入输出$y=x^2$：
+```python
+import tensorflow as tf 
+
+#从一个数组创建数据集
+input_data = [1,2,3,4,5,6,7,8]
+dataset = tf.data.Dataset.from_tensor_slices(input_data)
+
+#定义一个迭代器用于遍历数据集。因为上面定义的数据集没有用 palceholder
+#作为输入参数，所以这里可以使用最简单的 one_shot_iterator
+iterator = dataset.make_one_shot_iterator()
+
+# get_next()返回表示一个输入数据的张量，类似于队列的 dequeue()
+x = iterator.get_next()
+y = x*x
+
+with tf.Session() as sess:
+    for i in range(len(input_data)):
+        print(sess.run(y))
+'''
+1
+4
+9
+16
+25
+36
+49
+64
+'''
+```
+从以上的例子可以看到，利用数据集读取数据有三个基本步骤。
+1. 定义数据集的构造方法
+这个例子使用了 tf.data.Dataset.from_tensor_slices()，表明数据集是从一个张量中构建的，如果数据集是从文件中构建的，则需要相应调用不同的构造方法。**TFRecoedDataset** **TextLineDataset**
+2. 定义遍历器
+这里例子使用了最简单的 one_shot_iterator 来遍历数据集。稍后将介绍更加灵活的 initializable_iterator
+3. 使用 get_next() 方法从遍历器中读取数据张量，作为计算图的其他部分的输入
+
+
+在真实的项目中，训练数据通常时保存在硬盘文件中，这时可以用TextLineDataset来更加方便的读取数据。
+```python
+import tensorflow as tf 
+
+#从文本文件创建数据集。假定每行文字时一个训练例子，注意这里可以提供多个文件。
+# files = tf.train.match_filenames_once('G:\许的数据集\csv1\\gc*')
+# dataset = tf.data.TextLineDataset(files)
+
+dataset = tf.data.TextLineDataset(['G:\许的数据集\csv1\\gc1.csv','G:\许的数据集\csv1\\gc2.csv'])
+
+#定义迭代器用于遍历数据集
+iterator = dataset.make_one_shot_iterator()
+
+#这里get_next()返回一个字符串类型的张量，代表文件中的一行
+
+x = iterator.get_next()
+with tf.Session() as sess:
+    tf.local_variables_initializer().run()
+    # print(sess.run(files))
+    for i in range(3):
+        print(sess.run(x))
+```
+在图像相关任务中，输入数据通常以TFRecord形式存储，这时可以用 **TFRecoedDataset** 来读取数据，与文本文件不同，每一个TFRecord都有自己不同的 feature格式，因此在读取 TFRecord时，需要提供一个 **parser** 函数来解析所读取的 TFRecord的数据格式。
+```python
+import tensorflow as tf 
+#解析一个 TFredord的方法。record是从文件中读取的一个样例。7.1节中具体介绍了如何解析TFrecord样例
+#如何解析 TFRecord样例
+def parser(record):
+    #解析读入的一个样例
+    features = tf.parse_single_example(
+        record,
+        features = {
+            'i': tf.FixedLenFeature([],tf.int64),
+            'j': tf.FixedLenFeature([],tf.int64)
+        }
+    )
+    return features['i'],features['j']
+
+#从 TFRecord 文件创建数据集
+# files = tf.train.match_filenames_once("G:\Code\study_tensorflow_google\\tree_book\chapter6\path\\to\\")
+dataset = tf.data.TFRecordDataset("G:\Code\study_tensorflow_google\\tree_book\chapter6\path\\to\data.tfrecords-00000-of-00002")
+
+#map()函数表示对数据集中的每一条数据进行调用相应方法。使用 TFRecordDataset读出的
+#是二进制的数据，这里需要通过map() 来调用 parse() 对二进制数据进行解析。类似地，
+#map()函数也可以用来完成其他的数据预处理工作
+dataset = dataset.map(parser)
+
+#定义遍历数据集的迭代器
+iterator = dataset.make_one_shot_iterator()
+
+#feat1，feat2是 parser()返回的 一维的 int64型张量，可以作为输入用于进一步的计算
+feat1,feat2 = iterator.get_next()
+
+with tf.Session() as sess:
+    # tf.local_variables_initializer().run()
+    for i in range(2):
+        f1,f2 = sess.run([feat1,feat2])
+        print(f1,f2)
+```
+以上例子使用了最简单的 **one_shot_iterator** 来遍历数据集，在使用 **one_show_iterator**时，数据集的所有参数必须已经确定，因此 **one_show_iterator** **不需要特别的初始化过程**。如果需要用 placeholder 来初始化数据集，那就需要用到 initializeble_iterator.以下代码给出了用 **initializeble_iterator** 来动态初始化数据集的例子
+```python
+import tensorflow as tf 
+
+#解析一个TFRecord的方法
+def parser(record):
+    features = tf.parse_single_example(
+        record,
+        features = {
+            'i':tf.FixedLenFeature([],tf.int64),
+            'j':tf.FixedLenFeature([],tf.int64),
+        }
+    )
+    return features['i'],features['j']
+
+files = tf.train.match_filenames_once("G:\Code\study_tensorflow_google\\tree_book\chapter6\path\\to\*")
+input_files = tf.placeholder(tf.string) 
+dataset = tf.data.TFRecordDataset(input_files)
+dataset= dataset.map(parser)
+
+#定义遍历dataset的initializeble_iterator
+iterator = dataset.make_initializable_iterator()
+feat1,feat2 = iterator.get_next()
+
+with tf.Session() as sess:
+    #首先初始化interator,并给出input_files的值
+    tf.local_variables_initializer().run()
+    print(files)
+    sess.run(iterator.initializer,
+    feed_dict = {
+        input_files:files.eval
+    })
+    #遍历所有数据一个 epoch.当遍历结束时，程序会抛出OutofrangeError
+    while True:
+        try:
+            f1,f2 = sess.run([feat1,feat2])
+            print(f1,f2)
+        except tf.errors.OutOfRangeError:
+            break
+```
+### 6.5.1 数据集的高层操作
+>dataset = dataset.map(parser)
+
+**map** 是在数据集上进行操作的最常用的方法之一，在这里，map(parser)方法对数据集中的每一条数据调用参数指定的parser方法。对每一条数据进行处理后，map将处理后的数据包装成一个新的数据集返回，map函数非常灵活，可以用于对数据的预处理操作
+>distorted_image = preprocess_for_train(
+    decode_image,image_size,image_size,None
+)
+
+而在数据集框架中，可以通过map来对每一条数据调用preprocess_for_train方法：
+>dataset = dataset.map(lambda x : preprocess_for_train(x,image_size,image_size,None))
+
+在上面的代码中，lambda表达式的作用是将原来有的4个参数的函数转化为只有一个参数的函数。preprocess_for_train函数的第一个参数decoded_image变成了lambda表达式中的x，这个参数就是原来函数中的参数 decoded_image. preprocess_for_train函数中后三个参数都被替换成了具体的数值。注意这里的image_size是一个变量，有具体取值，该值需要在程序的上文给出。
+从表面上看，新的代码在长度上似乎并没有缩短，然而由于map方法返回的是一个 **新的数据集**，可以直接继续调用其他高层操作。在上一节介绍的队列框架中，预处理，shuffle，batch等操作有的在都队列上进行，有的在图片张量上进行，整个代码处理流程在处理队列和张量的代码片段中来回切换。而在数据集操作中，所有的操作都在数据集上进行，这样的代码结构将非常干净，简洁。
+**tf.train.batch**和 **tf.train.shuffle_batch**方法，在数据集框架中，shuffle 和 batch 操作由两个方法独立实现：
+>dataset = dataset.shuffle(buffer_size) #随机打乱顺序
+>dataset = dataset.batch(batch_size)#将数据组合成batch
+
+其中shuffle的方法的参数 buffle_size等效于 tf.train.shuffle_batch的 min_after_dequeue参数。shuffle算法在内部使用一个缓冲区保存 **buffer_size** 条数据，每读入一条新数据时，从这个缓冲区中选择出一条数据进行输出。缓冲区的大小越大，随机的性能越好，但占用的内存也就越多。
+**batch** 方法的参数 batch_size 代表要输出的每个 batch由多少条数据组成。如果数据集中包含多个张量，那么batch操作将对每一个张量分开进行，举例而言，如果数据集中的每一个数据(即 iterator.get_next()返回的值)是 image、label两个张量，其中image的维度是[300,300],label的维度是 [],batch_size是128，那么经过batch操作后的数据集的每一个输出将包含两个维度分别是 [128,300,300] 和[128]的张量。
+**repeat**是另一个常用的操作方法。这个方法将数据集中的数据复制多份，其中每一份的数据被称为一个 epoch.
+>dataet = dataet.repeat(N) #将数据集重复N份
+
+需要指出的是，如果数据集在 **repeat** 前已经进行了 shuffle操作，输出的每一个 epoch中随机 shuffle的结果并不会相同。例如，如果输入的数据是 [1,2,3],shuffle后输出的第一个epoch是 [2,1,3],而第二个 epoch则可能是 [3,2,1].**repeat**和 **map**、**shuffle**、**batch**等操作一样，都只是计算图中的一个计算节点，repeat只代表重复相同的处理过程，并不会记录前一 epoch的处理结果。
+除了这些方法，数据集还提供了其他多种操作。例如，**concatenate()**将两个数据集顺序连接起来，**take(N)** 从数据集读取前N项数据。 **skip(N)**在数据集中跳过前N项数据， **flap_map()**从多个数据集中轮流读取数据，等等。
+
+```python
+import tensorflow as tf 
+
+#列举输入文件，训练和测试使用不同的数据
+train_files = tf.train.match_filenames_once("/path/to/train_file-*")
+test_files = tf.train.match_filenames_once("/path/to/test_file-*")
+
+#定义parser方法从TFRecord中解析数据。这里假设 image中存储的是图像的原始数据
+# label 为该样例所对应的标签，height,width和channels给出了图片的维度
+def parser(record):
+    features = tf.parse_single_example(
+        record,
+        featires = {
+            'image':tf.FixedLenFeature([],tf.string),
+            'label':tf.FixedLenFeature([],tf.int64),
+            'height':tf.FixedLenFeature([],tf.int64),
+            'width':tf.FixedLenFeature([],tf.int64),
+            'channels':tf.FixedLenFeature([],tf.int64),
+        }
+    )
+
+    #从原始图像数据解析出象素矩阵，并根据图像尺寸还原图像
+    decode_image = tf.decode_raw(features['image'],tf.uint8)
+    decode_image.set_shape([features['height'],features['width'],features['channels']])
+    label = features['label']
+    return decode_image,label
+
+image_size = 299 #定义神经网络输入层图片的大小
+batch_size = 100 #定义组合数据batch的大小
+shuffle_buffer = 10000 #定义随机打乱数据时 buffer的大小
+
+#定义读取训练数据的数据集
+dataset = tf.data.TFRecordDataset(train_files)
+dataset = dataset.map(parser)
+
+#对数据依次进行预处理，shuffle，和 batching操作。preprocess_for_train 为
+#7.2.2小节中介绍的图像预处理程序。因为上一个mao得到的数据集中提供了 decoded_image
+#和 label两个结果，所以这个map需要提供一个有2个参数的函数来处理数据，在下面的代码中，
+#lambda中的image代表的就是第一个 map返回的 decoded_image,label代表的就是第一个map返回的label.
+#在这个lambda表达式中我们首先将decoded_image在传入 proprocess_for_train来进一步对图像数据
+#进行预处理。然后再将处理好的图像和label组成最终的输出
+
+dataset = dataset.map(lambda image,label:(
+    preprocess_for_train(image,image_szie,image_size,None),label
+))
+dataset = dataset.shuffle(shuffle_buffer).batch(batch_size)
+
+#重复Num_EPOCHS个 epoch,再上节 TRAINING_ROUNDS指定了训练的轮数，而在这里指定了
+#整个数据集重复的次数，它也间接的确定了训练的轮数
+NUM_EPOCHS = 10
+dataset = dataset.repeat(NUM_EPOCHS)
+
+#定义数据集迭代器，虽然定义数据集时没有直接使用placeholder来提供文件地址，但是
+#tf.trian.match_filenames_once 方法得到的结果和placeholder的机制类似
+#也需要初始化，所以这里使用的是 initializable_iterator
+iterator = dataset.make_initializable_iterator()
+image_batch, label_batch = iterator.get_next()
+
+#定义神经网络结构以及优化过程
+learning_rate = 0.01
+logit = inference(image_batch)
+loss = calc_loss(logit,label_batch)
+train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+
+#定义测试用的 Dataset,与训练不同，测试数据的Dataset不需要经过随机翻转等预处理操作，也不需要打乱顺序和
+#重复多个 epoch，这里使用与训练数据先用的 parser进行解析，调整分辨率到网络输入层大小，然后直接进行 batching操作
+test_dataset - tf.data.TFRecordDataset(test_files)
+test_dataset = test_dataset.map(lambda image,label:
+tf.image.resize_images(image,[image_size,image_size]),label))
+test_dataset = test_dataset.batch(batch_size)
+
+#定义测试数据上的迭代器
+test_iterator = test_dataset.make_initializable_iterator()
+test_image_batch,test_label_batch = test_iterator.get_next()
+
+#定义预测结果为logit值最大的分类
+test_logit = inference(test_image_batch)
+predictions = tf.argmax(test_logit,axis=-1,output_type = tf.int32)
+
+#声明会话并运行神经网络的优化过程
+with tf.Session() as sess:
+    #初始化变量
+    sess.run(tf.global_variables_initializer(),
+    tf.local_variables_initializer())
+
+    #初始化训练数据的迭代器
+    sess.run(iterator.initializer)
+
+    #循环进行训练，直到数据集完成输入、抛出 outOfRangeError错误
+    while True:
+        try:
+            sess.run(train_step)
+        except: tf.errors.OutOfRangeError:
+            break
+    
+    #初始化测试数据的迭代器
+    sess.run(test_iterator.initializer)
+
+    #获取预测结果
+    test_results = []
+    test_labels = []
+    while True:
+        try:
+            pred,label = sess.run([predictions,test_label_batch])
+            test_results.extend(pred)
+            test_labels.extend(label)
+        except tf.errors.OutOfRangeError:
+            break
+
+#计算准确率
+correct = [float (y==y_) for (y,y_) in zip (test_results,test_labels)
+accuracy = sum(correct) / len(correct)
+```
