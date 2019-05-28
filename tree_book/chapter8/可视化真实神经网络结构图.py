@@ -7,7 +7,7 @@ BATCH_SIZE = 100
 LEARNING_RATE_BASE = 0.8
 LEARNINT_RATE_DECAY = 0.99
 REGULARAZTION_RATE = 0.0001
-TRAINING_STEPS = 30000
+TRAINING_STEPS = 5000
 MOVING_AVERAGE_DECAY = 0.99
 # 模型保存的路径和文件名
 MODEL_SAVE_PATH = ".\model"
@@ -71,7 +71,7 @@ def train(mnist):
             # _,loss_value,step = sess.run(
             #     [train_op,loss,global_step],feed_dict={x:xs,y_:ys})
             
-            if i%100 == 0:
+            if i%1000 == 0:
                 #配置运行时需要记录的信息
                 run_options = tf.RunOptions(
                     trace_level = tf.RunOptions.FULL_TRACE
@@ -85,7 +85,8 @@ def train(mnist):
                     options=run_options,run_metadata=run_metadata
                 )
                 #将节点在运行时的信息写入日志文件
-                train_writer.add_run_metadata(run_metadata,"step%03d"%i)
+                writer = tf.summary.FileWriter("./path/to/loga",tf.get_default_graph())
+                writer.add_run_metadata(run_metadata,"step%03d"%i)
                 # 输出当前的训练情况。这里只输出了模型在当前batch上的损失函数大小。
                 # 通过损失函数的大小可以大概了解训练的情况，在验证数据集上的正确率信息会有
                 # 一个单独的程序来生成
@@ -97,7 +98,6 @@ def train(mnist):
                 [train_op,loss,global_step],feed_dict={x:xs,y_:ys})
     
     #将当前的计算图输出到 TB的日志文件
-    writer = tf.summary.FileWriter("./path/to/loga",tf.get_default_graph())
     writer.close()
 
 def main(argv = None):
